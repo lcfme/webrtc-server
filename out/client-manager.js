@@ -15,14 +15,32 @@ class Client {
         this.description = undefined;
         this.cm = cm;
         cm.emit(ClientManager.event.NEW_CLIENT_CONN, this);
-        socket.on('message', (message) => {
-            log(message);
-            if (message.cmd === 'rtc_description' &&
-                message.args &&
-                message.args.length) {
-                const rtcDesc = message.args[0];
-                this.description = rtcDesc;
-                cm.emit(ClientManager.event.GOT_RTC_DESC, this);
+        socket.on('message', (_message) => {
+            log(_message);
+            try {
+                const message = JSON.parse(_message);
+                if (message.cmd === 'rtc_description' &&
+                    message.args &&
+                    message.args.length) {
+                    const rtcDesc = (message.args[0]);
+                    this.description = rtcDesc;
+                    cm.emit(ClientManager.event.GOT_RTC_DESC, this);
+                    return;
+                }
+                if (message.cmd === 'candidate' &&
+                    message.args &&
+                    message.args.length) {
+                    const candidate = (message.args[0]);
+                    this.withPeers.forEach(withPeer => {
+                        withPeer.send({
+                            cmd: 'candidate',
+                            args: [candidate]
+                        });
+                    });
+                }
+            }
+            catch (err) {
+                console.log(err);
             }
         });
         socket.on('error', err => {
@@ -31,6 +49,7 @@ class Client {
         });
         socket.on('close', () => {
             log('socket.close');
+            this.cm.delete(this);
             socket.terminate();
         });
     }
@@ -45,25 +64,47 @@ class ClientManager extends events_1.EventEmitter {
         this.clientCollection = new Map();
         this.clientWithoutPeers = [];
         this.on(ClientManager.event.NEW_CLIENT_CONN, (client) => {
+            debugger;
             this.clientCollection.set(client.uuid, client);
-        });
-        this.on(ClientManager.event.GOT_RTC_DESC, (client) => {
-            this.clientWithoutPeers.push(client);
-            const firstClient = this.clientWithoutPeers[0];
+            const firstClient = this.clientWithoutPeers.pop();
             if (firstClient && firstClient !== client) {
                 client.send({
                     cmd: 'rtc_description',
                     args: [firstClient.description]
                 });
-                firstClient.send({
-                    cmd: 'rtc_description',
-                    args: [firstClient.description]
+                client.withPeers.push(firstClient);
+                firstClient.withPeers.push(client);
+            }
+            else {
+                client.send({
+                    cmd: 'should_rtc_create_offer',
+                    args: []
+                });
+            }
+        });
+        this.on(ClientManager.event.GOT_RTC_DESC, (client) => {
+            debugger;
+            if (client.description && client.description.type === 'offer') {
+                this.clientWithoutPeers.push(client);
+            }
+            else if (client.description &&
+                client.description.type === 'answer') {
+                client.withPeers.forEach(withPeer => {
+                    withPeer.send({
+                        cmd: 'rtc_description',
+                        args: [client.description]
+                    });
                 });
             }
         });
     }
     new(socket) {
         return new Client(socket, this);
+    }
+    delete(client) {
+        this.clientCollection.delete(client.uuid);
+        this.clientWithoutPeers = this.clientWithoutPeers.filter(_client => _client !== client);
+        log('delete', this.clientWithoutPeers);
     }
 }
 ClientManager.event = {

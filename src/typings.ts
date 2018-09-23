@@ -8,3 +8,9 @@ type RTCDescription = {
     sdp: string;
     [k: string]: any;
 };
+
+type RTCCandidate = {
+    candidate: string;
+    sdpMLineIndex: number;
+    sdpMid: string;
+};

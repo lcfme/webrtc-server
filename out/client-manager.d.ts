@@ -21,4 +21,5 @@ export declare class ClientManager extends EventEmitter {
     clientWithoutPeers: Array<Client>;
     constructor();
     new(socket: Socket): Client;
+    delete(client: Client): void;
 }

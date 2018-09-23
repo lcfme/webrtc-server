@@ -7,3 +7,8 @@ declare type RTCDescription = {
     sdp: string;
     [k: string]: any;
 };
+declare type RTCCandidate = {
+    candidate: string;
+    sdpMLineIndex: number;
+    sdpMid: string;
+};
